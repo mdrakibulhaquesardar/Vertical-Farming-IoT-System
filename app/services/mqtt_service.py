@@ -82,17 +82,21 @@ async def handle_message(topic, payload_bytes: bytes) -> None:
         logger.info("ingested mqtt message", extra={"device_id": device_id, "sensor": sensor.sensor_id, "type": sensor.type, "value_numeric": value_numeric})
 
         # publish to event bus for websocket listeners
-        await event_bus.publish(
-            device_id,
-            {
-                "device_id": device_id,
-                "sensor_id": sensor.sensor_id,
-                "type": sensor.type,
-                "ts": reading.ts.isoformat(),
-                "value_numeric": value_numeric,
-                "value_text": value_text,
-            },
-        )
+        ws_message = {
+            "device_id": device_id,
+            "sensor_id": sensor.sensor_id,
+            "type": sensor.type,
+            "ts": reading.ts.isoformat(),
+            "value_numeric": value_numeric,
+            "value_text": value_text,
+        }
+        # Enrich waterflow with additional metrics if present in payload
+        if sensor.type == "waterflow" and isinstance(payload, dict):
+            extra_keys = ("total_liters", "avg_l_per_min", "pulses")
+            for k in extra_keys:
+                if k in payload:
+                    ws_message[k] = payload[k]
+        await event_bus.publish(device_id, ws_message)
 
         # Threshold check and alert
         if value_numeric is not None:

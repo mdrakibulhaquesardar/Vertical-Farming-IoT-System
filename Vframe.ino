@@ -25,6 +25,11 @@ const char* WIFI_PASSWORD = "17532296404";
 const char* MQTT_HOST = "192.168.0.134"; // Broker IP or hostname
 const uint16_t MQTT_PORT = 1883;
 const char* DEVICE_ID = "esp32-001";  // Must match backend device_id
+
+// ====== STATUS LED CONFIG ======
+#ifndef STATUS_LED_PIN
+#define STATUS_LED_PIN 18  // GPIO16 for status indicator
+#endif
 // =======================================
 
 WiFiClient wifiClient;
@@ -50,6 +55,12 @@ volatile unsigned long lastFlowPulseTime = 0;
 volatile unsigned long totalPulseCount = 0; // Total pulses since startup
 const float CALIBRATION_FACTOR = 4.5; // Pulses per liter/minute (adjust based on your sensor)
 
+// Status LED variables
+bool wifiConnected = false;
+bool mqttConnected = false;
+unsigned long lastStatusBlink = 0;
+bool statusLedState = false;
+
 // Water flow sensor interrupt handler
 void IRAM_ATTR flowPulse() {
   unsigned long currentTime = millis();
@@ -61,6 +72,22 @@ void IRAM_ATTR flowPulse() {
   }
 }
 
+void updateStatusLED() {
+  bool allGood = wifiConnected && mqttConnected;
+  
+  if (allGood) {
+    // Both OK - LED solid ON
+    digitalWrite(STATUS_LED_PIN, HIGH);
+  } else {
+    // Problem - LED blinking (500ms on/off)
+    if (millis() - lastStatusBlink > 500) {
+      statusLedState = !statusLedState;
+      digitalWrite(STATUS_LED_PIN, statusLedState ? HIGH : LOW);
+      lastStatusBlink = millis();
+    }
+  }
+}
+
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
   Serial.println("[WiFi] Connecting...");
@@ -69,6 +96,8 @@ void connectWiFi() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print('.');
+    // Update status LED during WiFi connection attempts
+    updateStatusLED();
     if (millis() - startMs > 20000) { // 20s timeout then retry
       Serial.println("\n[WiFi] Timeout. Retrying...");
       startMs = millis();
@@ -79,6 +108,7 @@ void connectWiFi() {
   }
   Serial.print("\n[WiFi] Connected. IP: ");
   Serial.println(WiFi.localIP());
+  wifiConnected = true;
 }
 
 void handleControlMessage(char* topic, byte* payload, unsigned int length) {
@@ -136,6 +166,7 @@ void ensureMqttConnected() {
     Serial.println(clientId);
     if (mqttClient.connect(clientId.c_str())) {
       Serial.println("[MQTT] Connected");
+      mqttConnected = true;
       if (mqttClient.subscribe(controlTopic, 1)) {
         Serial.print("[MQTT] Subscribed: ");
         Serial.println(controlTopic);
@@ -145,6 +176,9 @@ void ensureMqttConnected() {
     } else {
       Serial.print("[MQTT] Connect failed, state=");
       Serial.println(mqttClient.state());
+      mqttConnected = false;
+      // Update status LED during connection attempts
+      updateStatusLED();
       delay(1000);
     }
   }
@@ -162,6 +196,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   // Ensure LED starts OFF
   digitalWrite(LED_BUILTIN, LED_ACTIVE_LOW ? HIGH : LOW);
+  
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  digitalWrite(STATUS_LED_PIN, LOW); // Start with status LED OFF
 
   snprintf(controlTopic, sizeof(controlTopic), "farm/%s/control/light", DEVICE_ID);
   Serial.print("[Topic] Control: "); Serial.println(controlTopic);
@@ -182,13 +219,26 @@ void setup() {
 }
 
 void loop() {
+  // Check WiFi status
   if (WiFi.status() != WL_CONNECTED) {
+    wifiConnected = false;
     connectWiFi();
+  } else {
+    wifiConnected = true;
   }
+  
+  // Check MQTT status
   if (!mqttClient.connected()) {
+    mqttConnected = false;
     ensureMqttConnected();
+  } else {
+    mqttConnected = true;
   }
+  
   mqttClient.loop();
+  
+  // Update status LED
+  updateStatusLED();
   static uint32_t lastLog = 0;
   if (millis() - lastLog > 10000) { // every 10s
     lastLog = millis();
