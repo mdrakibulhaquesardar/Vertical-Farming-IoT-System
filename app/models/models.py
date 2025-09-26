@@ -73,3 +73,17 @@ class ControlLog(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     result: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class Threshold(Base):
+    __tablename__ = "thresholds"
+    __table_args__ = (
+        Index("ix_threshold_device_type", "device_id", "sensor_type", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False)
+    sensor_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_alerted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
