@@ -39,6 +39,7 @@ char controlTopic[128];
 char tempTopic[128];
 char humTopic[128];
 char waterflowTopic[128];
+char tdsTopic[128];
 
 // ====== DHT11 SENSOR CONFIG ======
 #ifndef DHTPIN
@@ -55,11 +56,35 @@ volatile unsigned long lastFlowPulseTime = 0;
 volatile unsigned long totalPulseCount = 0; // Total pulses since startup
 const float CALIBRATION_FACTOR = 4.5; // Pulses per liter/minute (adjust based on your sensor)
 
+// ====== TDS SENSOR CONFIG ======
+#ifndef TDS_PIN
+#define TDS_PIN 34  // ADC1_CH6 (GPIO34) - analog input
+#endif
+#ifndef VREF
+#define VREF 3.3  // analog reference voltage
+#endif
+#ifndef SCOUNT
+#define SCOUNT 30  // sum of sample point
+#endif
+
+// TDS Quality Thresholds (ppm)
+#define TDS_EXCELLENT 300   // <300 ppm - Pure/Drinking water
+#define TDS_GOOD 600        // 300-600 ppm - Average tap water  
+#define TDS_FAIR 800        // 600-800 ppm - Acceptable for plants
+#define TDS_POOR 1000       // 800-1000 ppm - Poor quality
+// >1000 ppm - Polluted/Unsafe
+
 // Status LED variables
 bool wifiConnected = false;
 bool mqttConnected = false;
 unsigned long lastStatusBlink = 0;
 bool statusLedState = false;
+
+// TDS sensor variables
+int analogBuffer[SCOUNT];
+int analogBufferTemp[SCOUNT];
+int analogBufferIndex = 0;
+int copyIndex = 0;
 
 // Water flow sensor interrupt handler
 void IRAM_ATTR flowPulse() {
@@ -69,6 +94,90 @@ void IRAM_ATTR flowPulse() {
     flowPulseCount++;
     totalPulseCount++;
     lastFlowPulseTime = currentTime;
+  }
+}
+
+float getMedianNum(int bArray[], int iFilterLen) {
+  int bTab[iFilterLen];
+  for (byte i = 0; i < iFilterLen; i++)
+    bTab[i] = bArray[i];
+  int i, j, bTemp;
+  for (j = 0; j < iFilterLen - 1; j++) {
+    for (i = 0; i < iFilterLen - j - 1; i++) {
+      if (bTab[i] > bTab[i + 1]) {
+        bTemp = bTab[i];
+        bTab[i] = bTab[i + 1];
+        bTab[i + 1] = bTemp;
+      }
+    }
+  }
+  if ((iFilterLen & 1) > 0)
+    bTemp = bTab[(iFilterLen - 1) / 2];
+  else
+    bTemp = (bTab[iFilterLen / 2] + bTab[iFilterLen / 2 - 1]) / 2;
+  return bTemp;
+}
+
+float readTDS() {
+  static unsigned long analogSampleTimepoint = millis();
+  static unsigned long lastTDSReading = 0;
+  static float lastTDSValue = 0.0;
+  static bool firstReading = true;
+  
+  // Sample analog every 40ms
+  if (millis() - analogSampleTimepoint > 40U) {
+    analogSampleTimepoint = millis();
+    int rawValue = analogRead(TDS_PIN);
+    analogBuffer[analogBufferIndex] = rawValue;
+    analogBufferIndex++;
+    if (analogBufferIndex == SCOUNT) {
+      analogBufferIndex = 0;
+      if (firstReading) {
+        Serial.print("[TDS] First buffer filled, raw values: ");
+        for (int i = 0; i < 5; i++) {
+          Serial.print(analogBuffer[i]);
+          Serial.print(" ");
+        }
+        Serial.println("...");
+        firstReading = false;
+      }
+    }
+  }
+  
+  // Calculate TDS every 800ms and store the result
+  if (millis() - lastTDSReading > 800U) {
+    lastTDSReading = millis();
+    for (copyIndex = 0; copyIndex < SCOUNT; copyIndex++)
+      analogBufferTemp[copyIndex] = analogBuffer[copyIndex];
+    
+    int medianValue = getMedianNum(analogBufferTemp, SCOUNT);
+    float averageVoltage = medianValue * (float)VREF / 4095.0;
+    float compensationCoefficient = 1.0 + 0.02 * (25.0 - 25.0); // temperature compensation
+    float compensationVoltage = averageVoltage / compensationCoefficient;
+    lastTDSValue = (133.42 * compensationVoltage * compensationVoltage * compensationVoltage - 255.86 * compensationVoltage * compensationVoltage + 857.39 * compensationVoltage) * 0.5;
+    
+    Serial.print("[TDS] Debug - Raw: ");
+    Serial.print(medianValue);
+    Serial.print(", Voltage: ");
+    Serial.print(averageVoltage, 3);
+    Serial.print(", TDS: ");
+    Serial.println(lastTDSValue, 2);
+  }
+  
+  return lastTDSValue;
+}
+
+String getTDSQuality(float tdsValue) {
+  if (tdsValue < TDS_EXCELLENT) {
+    return "EXCELLENT";
+  } else if (tdsValue < TDS_GOOD) {
+    return "GOOD";
+  } else if (tdsValue < TDS_FAIR) {
+    return "FAIR";
+  } else if (tdsValue < TDS_POOR) {
+    return "POOR";
+  } else {
+    return "UNSAFE";
   }
 }
 
@@ -208,6 +317,8 @@ void setup() {
   Serial.print("[Topic] Humidity: "); Serial.println(humTopic);
   snprintf(waterflowTopic, sizeof(waterflowTopic), "farm/%s/sensor/waterflow", DEVICE_ID);
   Serial.print("[Topic] Waterflow: "); Serial.println(waterflowTopic);
+  snprintf(tdsTopic, sizeof(tdsTopic), "farm/%s/sensor/tds", DEVICE_ID);
+  Serial.print("[Topic] TDS: "); Serial.println(tdsTopic);
 
   // Setup water flow sensor
   pinMode(WATERFLOW_PIN, INPUT_PULLUP);
@@ -294,6 +405,26 @@ void loop() {
       bool ok3 = mqttClient.publish(waterflowTopic, payloadWaterflow, false);
       Serial.print("[PUB] Waterflow -> "); Serial.print(waterflowTopic);
       Serial.print(" | "); Serial.println(ok3 ? payloadWaterflow : "publish failed");
+    }
+    
+    // TDS reading
+    float tdsValue = readTDS();
+    Serial.print("[TDS] Raw reading: "); Serial.println(tdsValue);
+    if (tdsValue > 0) {
+      String quality = getTDSQuality(tdsValue);
+      char payloadTDS[128];
+      int n4 = snprintf(payloadTDS, sizeof(payloadTDS), 
+                       "{\"ppm\":%.2f,\"quality\":\"%s\"}", 
+                       tdsValue, quality.c_str());
+      if (n4 > 0 && n4 < (int)sizeof(payloadTDS)) {
+        bool ok4 = mqttClient.publish(tdsTopic, payloadTDS, false);
+        Serial.print("[PUB] TDS -> "); Serial.print(tdsTopic);
+        Serial.print(" | "); Serial.println(ok4 ? payloadTDS : "publish failed");
+        Serial.print("[TDS] Quality: "); Serial.print(quality);
+        Serial.print(" | PPM: "); Serial.println(tdsValue);
+      }
+    } else {
+      Serial.println("[TDS] No reading available yet (still sampling)");
     }
   }
   delay(10);

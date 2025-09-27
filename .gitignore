@@ -1,0 +1,3 @@
+# Ignore the Flutter app directory
+verta_farm/
+.env

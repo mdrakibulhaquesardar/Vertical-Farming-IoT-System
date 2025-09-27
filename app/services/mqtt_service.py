@@ -19,6 +19,7 @@ TOPIC_FILTERS = [
     "farm/+/sensor/humidity",
     "farm/+/sensor/waterflow",
     "farm/+/sensor/waterlevel",
+    "farm/+/sensor/tds",
 ]
 
 
@@ -31,6 +32,8 @@ def _map_payload_to_value(sensor_type: str, payload: dict) -> tuple[float | None
         return payload.get("l_per_min"), None
     if sensor_type == "waterlevel":
         return payload.get("cm"), None
+    if sensor_type == "tds":
+        return payload.get("ppm"), None
     val = payload.get("value")
     if isinstance(val, (int, float)):
         return float(val), None
