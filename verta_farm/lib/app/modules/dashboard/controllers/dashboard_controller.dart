@@ -170,15 +170,32 @@ class DashboardController extends GetxController {
     try {
       print('Processing WebSocket data: $data');
 
-      // Handle status messages (relay state)
+      // Handle status messages (relay and light state)
       if (data.containsKey('type') && data['type'] == 'status') {
         final statusData = data['data'] as Map<String, dynamic>;
+
+        // Handle relay status
         if (statusData.containsKey('relay')) {
           final relayData = statusData['relay'] as Map<String, dynamic>;
           if (relayData.containsKey('state')) {
             final relayState = relayData['state'] as String;
             pumpStatus.value = relayState == 'on';
             print('Updated pump status from ESP32: $relayState');
+          }
+        }
+
+        // Handle light status (reverse logic for LED_ACTIVE_LOW)
+        if (statusData.containsKey('light')) {
+          final lightData = statusData['light'] as Map<String, dynamic>;
+          if (lightData.containsKey('state')) {
+            final lightState = lightData['state'] as String;
+            // ESP32 sends "on" when LED pin is LOW (LED actually ON due to LED_ACTIVE_LOW)
+            // ESP32 sends "off" when LED pin is HIGH (LED actually OFF due to LED_ACTIVE_LOW)
+            // So we reverse: "on" means app button should be OFF, "off" means app button should be ON
+            growLightStatus.value = lightState == 'off';
+            print(
+              'Updated grow light status from ESP32: $lightState (app button: ${lightState == 'off'})',
+            );
           }
         }
         return;
@@ -395,7 +412,14 @@ class DashboardController extends GetxController {
 
   void toggleGrowLight() async {
     final newStatus = !growLightStatus.value;
-    final success = await _controlService.controlLight('esp32-001', newStatus);
+    // Reverse the control command for LED_ACTIVE_LOW logic
+    // App button ON means ESP32 should turn LED OFF (send false)
+    // App button OFF means ESP32 should turn LED ON (send true)
+    final esp32Command = !newStatus;
+    final success = await _controlService.controlLight(
+      'esp32-001',
+      esp32Command,
+    );
 
     if (success) {
       growLightStatus.value = newStatus;

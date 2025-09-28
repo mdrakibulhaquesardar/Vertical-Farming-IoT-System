@@ -189,6 +189,20 @@ void publishRelayStatus(bool isOn) {
   }
 }
 
+void publishLEDStatus(bool isOn) {
+  char payload[128];
+  int n = snprintf(payload, sizeof(payload), 
+                   "{\"light\":{\"state\":\"%s\",\"timestamp\":%lu}}", 
+                   isOn ? "on" : "off", millis());
+  if (n > 0 && n < (int)sizeof(payload)) {
+    bool ok = mqttClient.publish(statusTopic, payload, false);
+    Serial.print("[STATUS] Light -> ");
+    Serial.print(statusTopic);
+    Serial.print(" | "); 
+    Serial.println(ok ? payload : "publish failed");
+  }
+}
+
 String getTDSQuality(float tdsValue) {
   if (tdsValue < TDS_EXCELLENT) {
     return "EXCELLENT";
@@ -261,6 +275,10 @@ void handleControlMessage(char* topic, byte* payload, unsigned int length) {
     // Publish current relay status
     bool currentRelayState = digitalRead(RELAY_PIN) == LOW; // LOW = ON (as per your logic)
     publishRelayStatus(currentRelayState);
+    
+    // Publish current LED status (reverse logic for LED_ACTIVE_LOW)
+    bool currentLEDState = digitalRead(LED_BUILTIN) == (LED_ACTIVE_LOW ? LOW : HIGH);
+    publishLEDStatus(currentLEDState);
     return;
   }
 
@@ -325,6 +343,9 @@ void handleControlMessage(char* topic, byte* payload, unsigned int length) {
     Serial.print(" (pin level=");
     Serial.print(level == HIGH ? "HIGH" : "LOW");
     Serial.println(")");
+    
+    // Publish current LED state (reverse logic)
+    publishLEDStatus(turnOn);
   }
 }
 
@@ -413,9 +434,10 @@ void setup() {
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setCallback(handleControlMessage);
   
-  // Publish initial relay status
+  // Publish initial status
   delay(1000);
   publishRelayStatus(false); // Start with relay OFF
+  publishLEDStatus(true);    // Start with LED OFF (but send "on" because LED_ACTIVE_LOW makes it OFF)
 }
 
 void loop() {
