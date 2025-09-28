@@ -30,12 +30,20 @@ const char* DEVICE_ID = "esp32-001";  // Must match backend device_id
 #ifndef STATUS_LED_PIN
 #define STATUS_LED_PIN 18  // GPIO16 for status indicator
 #endif
+
+// ====== RELAY CONFIG ======
+#ifndef RELAY_PIN
+#define RELAY_PIN 19  // GPIO19 for relay control
+#endif
 // =======================================
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
 char controlTopic[128];
+char relayTopic[128];
+char statusTopic[128];
+char statusRequestTopic[128];
 char tempTopic[128];
 char humTopic[128];
 char waterflowTopic[128];
@@ -167,6 +175,20 @@ float readTDS() {
   return lastTDSValue;
 }
 
+void publishRelayStatus(bool isOn) {
+  char payload[128];
+  int n = snprintf(payload, sizeof(payload), 
+                   "{\"relay\":{\"state\":\"%s\",\"timestamp\":%lu}}", 
+                   isOn ? "on" : "off", millis());
+  if (n > 0 && n < (int)sizeof(payload)) {
+    bool ok = mqttClient.publish(statusTopic, payload, false);
+    Serial.print("[STATUS] Relay -> ");
+    Serial.print(statusTopic);
+    Serial.print(" | "); 
+    Serial.println(ok ? payload : "publish failed");
+  }
+}
+
 String getTDSQuality(float tdsValue) {
   if (tdsValue < TDS_EXCELLENT) {
     return "EXCELLENT";
@@ -225,43 +247,85 @@ void handleControlMessage(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print(" len=");
   Serial.println(length);
-  // Backend payload example: {"command":"light","desired_state":"on",...}
-  // Minimal parse: search for desired_state on/off without adding ArduinoJson
-  bool turnOn = false;
+  
   String s;
   s.reserve(length + 1);
   for (unsigned int i = 0; i < length; ++i) s += (char)payload[i];
   Serial.print("[MQTT] Payload: ");
   Serial.println(s);
 
-  // Robust extraction of desired_state (ignores spaces):
-  int keyPos = s.indexOf("\"desired_state\"");
-  if (keyPos >= 0) {
-    int colonPos = s.indexOf(':', keyPos);
-    if (colonPos >= 0) {
-      // find opening quote after colon
-      int openQ = s.indexOf('"', colonPos + 1);
-      if (openQ >= 0) {
-        int closeQ = s.indexOf('"', openQ + 1);
-        if (closeQ > openQ) {
-          String val = s.substring(openQ + 1, closeQ);
-          val.toLowerCase();
-          Serial.print("[PARSE] desired_state=\"");
-          Serial.print(val);
-          Serial.println("\"");
-          if (val == "on") turnOn = true;
-          if (val == "off") turnOn = false;
+  // Check if this is a status request
+  String topicStr = String(topic);
+  if (topicStr.indexOf("/status/request") >= 0) {
+    Serial.println("[STATUS] Status request received");
+    // Publish current relay status
+    bool currentRelayState = digitalRead(RELAY_PIN) == LOW; // LOW = ON (as per your logic)
+    publishRelayStatus(currentRelayState);
+    return;
+  }
+
+  // Check if this is a relay control message
+  if (topicStr.indexOf("/relay") >= 0) {
+    // Relay control: {"target": "relay", "desired_state": "on"}
+    bool turnOn = false;
+    int keyPos = s.indexOf("\"desired_state\"");
+    if (keyPos >= 0) {
+      int colonPos = s.indexOf(':', keyPos);
+      if (colonPos >= 0) {
+        int openQ = s.indexOf('"', colonPos + 1);
+        if (openQ >= 0) {
+          int closeQ = s.indexOf('"', openQ + 1);
+          if (closeQ > openQ) {
+            String val = s.substring(openQ + 1, closeQ);
+            val.toLowerCase();
+            Serial.print("[RELAY] desired_state=\"");
+            Serial.print(val);
+            Serial.println("\"");
+            if (val == "on") turnOn = true;
+            if (val == "off") turnOn = false;
+          }
         }
       }
     }
+    digitalWrite(RELAY_PIN, turnOn ? LOW : HIGH);
+    Serial.print("[RELAY] State -> ");
+    Serial.print(turnOn ? "OFF" : "ON");
+    Serial.print(" (pin level=");
+    Serial.print(turnOn ? "HIGH" : "LOW");
+    Serial.println(")");
+    
+    // Publish current relay state
+    publishRelayStatus(turnOn);
+  } else {
+    // LED control: {"command":"light","desired_state":"on",...}
+    bool turnOn = false;
+    int keyPos = s.indexOf("\"desired_state\"");
+    if (keyPos >= 0) {
+      int colonPos = s.indexOf(':', keyPos);
+      if (colonPos >= 0) {
+        int openQ = s.indexOf('"', colonPos + 1);
+        if (openQ >= 0) {
+          int closeQ = s.indexOf('"', openQ + 1);
+          if (closeQ > openQ) {
+            String val = s.substring(openQ + 1, closeQ);
+            val.toLowerCase();
+            Serial.print("[LED] desired_state=\"");
+            Serial.print(val);
+            Serial.println("\"");
+            if (val == "on") turnOn = true;
+            if (val == "off") turnOn = false;
+          }
+        }
+      }
+    }
+    int level = turnOn ? (LED_ACTIVE_LOW ? LOW : HIGH) : (LED_ACTIVE_LOW ? HIGH : LOW);
+    digitalWrite(LED_BUILTIN, level);
+    Serial.print("[LED] State -> ");
+    Serial.print(turnOn ? "ON" : "OFF");
+    Serial.print(" (pin level=");
+    Serial.print(level == HIGH ? "HIGH" : "LOW");
+    Serial.println(")");
   }
-  int level = turnOn ? (LED_ACTIVE_LOW ? LOW : HIGH) : (LED_ACTIVE_LOW ? HIGH : LOW);
-  digitalWrite(LED_BUILTIN, level);
-  Serial.print("[LED] State -> ");
-  Serial.print(turnOn ? "ON" : "OFF");
-  Serial.print(" (pin level=");
-  Serial.print(level == HIGH ? "HIGH" : "LOW");
-  Serial.println(")");
 }
 
 void ensureMqttConnected() {
@@ -281,6 +345,18 @@ void ensureMqttConnected() {
         Serial.println(controlTopic);
       } else {
         Serial.println("[MQTT] Subscribe failed");
+      }
+      if (mqttClient.subscribe(relayTopic, 1)) {
+        Serial.print("[MQTT] Subscribed: ");
+        Serial.println(relayTopic);
+      } else {
+        Serial.println("[MQTT] Relay subscribe failed");
+      }
+      if (mqttClient.subscribe(statusRequestTopic, 1)) {
+        Serial.print("[MQTT] Subscribed: ");
+        Serial.println(statusRequestTopic);
+      } else {
+        Serial.println("[MQTT] Status request subscribe failed");
       }
     } else {
       Serial.print("[MQTT] Connect failed, state=");
@@ -308,9 +384,18 @@ void setup() {
   
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW); // Start with status LED OFF
+  
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW); // Start with relay OFF
 
   snprintf(controlTopic, sizeof(controlTopic), "farm/%s/control/light", DEVICE_ID);
   Serial.print("[Topic] Control: "); Serial.println(controlTopic);
+  snprintf(relayTopic, sizeof(relayTopic), "farm/%s/control/relay", DEVICE_ID);
+  Serial.print("[Topic] Relay: "); Serial.println(relayTopic);
+  snprintf(statusTopic, sizeof(statusTopic), "farm/%s/status", DEVICE_ID);
+  Serial.print("[Topic] Status: "); Serial.println(statusTopic);
+  snprintf(statusRequestTopic, sizeof(statusRequestTopic), "farm/%s/status/request", DEVICE_ID);
+  Serial.print("[Topic] Status Request: "); Serial.println(statusRequestTopic);
   snprintf(tempTopic, sizeof(tempTopic), "farm/%s/sensor/temperature", DEVICE_ID);
   Serial.print("[Topic] Temperature: "); Serial.println(tempTopic);
   snprintf(humTopic, sizeof(humTopic), "farm/%s/sensor/humidity", DEVICE_ID);
@@ -327,6 +412,10 @@ void setup() {
   connectWiFi();
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setCallback(handleControlMessage);
+  
+  // Publish initial relay status
+  delay(1000);
+  publishRelayStatus(false); // Start with relay OFF
 }
 
 void loop() {

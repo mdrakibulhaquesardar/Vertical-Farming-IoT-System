@@ -20,6 +20,7 @@ TOPIC_FILTERS = [
     "farm/+/sensor/waterflow",
     "farm/+/sensor/waterlevel",
     "farm/+/sensor/tds",
+    "farm/+/status",
 ]
 
 
@@ -59,9 +60,29 @@ def _ensure_device_and_sensor(db: Session, device_id: str, sensor_type: str) -> 
 async def handle_message(topic, payload_bytes: bytes) -> None:
     topic_str = getattr(topic, "value", None) or str(topic)
     parts = topic_str.split("/")
-    if len(parts) < 4:
+    if len(parts) < 3:
         return
     device_id = parts[1]
+    
+    # Handle status messages (farm/device_id/status)
+    if len(parts) == 3 and parts[2] == "status":
+        try:
+            payload = json.loads(payload_bytes.decode("utf-8"))
+            # Publish status directly to WebSocket
+            await event_bus.publish(device_id, {
+                "type": "status",
+                "device_id": device_id,
+                "data": payload,
+                "ts": datetime.utcnow().isoformat()
+            })
+            logger.info("published status message", extra={"device_id": device_id, "payload": payload})
+        except Exception as e:
+            logger.error("failed to process status message", extra={"device_id": device_id, "error": str(e)})
+        return
+    
+    # Handle sensor messages (farm/device_id/sensor/type)
+    if len(parts) < 4:
+        return
     sensor_type = parts[3]
 
     try:
