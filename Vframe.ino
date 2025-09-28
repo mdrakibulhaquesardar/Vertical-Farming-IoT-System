@@ -26,9 +26,15 @@ const char* MQTT_HOST = "192.168.0.134"; // Broker IP or hostname
 const uint16_t MQTT_PORT = 1883;
 const char* DEVICE_ID = "esp32-001";  // Must match backend device_id
 
-// ====== STATUS LED CONFIG ======
-#ifndef STATUS_LED_PIN
-#define STATUS_LED_PIN 18  // GPIO16 for status indicator
+// ====== RGB LED CONFIG ======
+#ifndef RGB_RED_PIN
+#define RGB_RED_PIN 18    // GPIO18 for Red channel
+#endif
+#ifndef RGB_GREEN_PIN
+#define RGB_GREEN_PIN 21  // GPIO21 for Green channel
+#endif
+#ifndef RGB_BLUE_PIN
+#define RGB_BLUE_PIN 22   // GPIO22 for Blue channel
 #endif
 
 // ====== RELAY CONFIG ======
@@ -82,7 +88,7 @@ const float CALIBRATION_FACTOR = 4.5; // Pulses per liter/minute (adjust based o
 #define TDS_POOR 1000       // 800-1000 ppm - Poor quality
 // >1000 ppm - Polluted/Unsafe
 
-// Status LED variables
+// RGB LED variables
 bool wifiConnected = false;
 bool mqttConnected = false;
 unsigned long lastStatusBlink = 0;
@@ -217,19 +223,35 @@ String getTDSQuality(float tdsValue) {
   }
 }
 
+void setRGBColor(int red, int green, int blue) {
+  analogWrite(RGB_RED_PIN, red);
+  analogWrite(RGB_GREEN_PIN, green);
+  analogWrite(RGB_BLUE_PIN, blue);
+}
+
 void updateStatusLED() {
   bool allGood = wifiConnected && mqttConnected;
   
   if (allGood) {
-    // Both OK - LED solid ON
-    digitalWrite(STATUS_LED_PIN, HIGH);
-  } else {
-    // Problem - LED blinking (500ms on/off)
+    // Both OK - Green color
+    setRGBColor(0, 255, 0);  // Green
+  } else if (wifiConnected && !mqttConnected) {
+    // WiFi OK but MQTT failed - Yellow color
+    setRGBColor(255, 255, 0);  // Yellow
+  } else if (!wifiConnected) {
+    // WiFi failed - Blue color (blinking)
     if (millis() - lastStatusBlink > 500) {
       statusLedState = !statusLedState;
-      digitalWrite(STATUS_LED_PIN, statusLedState ? HIGH : LOW);
+      if (statusLedState) {
+        setRGBColor(0, 0, 255);  // Blue ON
+      } else {
+        setRGBColor(0, 0, 0);    // All OFF
+      }
       lastStatusBlink = millis();
     }
+  } else {
+    // Unknown state - Red color
+    setRGBColor(255, 0, 0);  // Red
   }
 }
 
@@ -403,8 +425,11 @@ void setup() {
   // Ensure LED starts OFF
   digitalWrite(LED_BUILTIN, LED_ACTIVE_LOW ? HIGH : LOW);
   
-  pinMode(STATUS_LED_PIN, OUTPUT);
-  digitalWrite(STATUS_LED_PIN, LOW); // Start with status LED OFF
+  // Setup RGB LED pins
+  pinMode(RGB_RED_PIN, OUTPUT);
+  pinMode(RGB_GREEN_PIN, OUTPUT);
+  pinMode(RGB_BLUE_PIN, OUTPUT);
+  setRGBColor(0, 0, 0); // Start with all LEDs OFF
   
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW); // Start with relay OFF

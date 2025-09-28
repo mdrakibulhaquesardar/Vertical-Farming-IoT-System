@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../utils/snackbar_utils.dart';
 import '../../../widgets/pump_control_card.dart';
 import '../../../widgets/light_control_card.dart';
 import '../../../widgets/fan_control_card.dart';
@@ -48,21 +47,28 @@ class ControlView extends GetView<ControlController> {
                   temperature: controller.temperature.value,
                   moisture: controller.moisture.value,
                   diseaseStatus: controller.diseaseStatus.value,
-                  pumpStatus: controller.pumpStatusText,
-                  lightStatus: controller.lightStatusText,
-                  fanStatus: controller.fanStatusText,
-                  pumpStatusColor: controller.pumpStatusColor,
-                  lightStatusColor: controller.lightStatusColor,
-                  fanStatusColor: controller.fanStatusColor,
+                  pumpStatus: controller.pumpStatus.value ? 'ON' : 'OFF',
+                  lightStatus: controller.lightStatus.value ? 'ON' : 'OFF',
+                  fanStatus: controller.fanStatus.value ? 'ON' : 'OFF',
+                  pumpStatusColor: controller.pumpStatus.value
+                      ? Colors.green
+                      : Colors.grey,
+                  lightStatusColor: controller.lightStatus.value
+                      ? Colors.green
+                      : Colors.grey,
+                  fanStatusColor: controller.fanStatus.value
+                      ? Colors.green
+                      : Colors.grey,
                 ),
               ),
               const SizedBox(height: 10),
-               Text(
+              Text(
                 'Sensors & Controls',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: colorScheme.onSurface,
-                ),),
+                ),
+              ),
               const SizedBox(height: 10),
               // Auto Mode Configuration
               Obx(
@@ -164,9 +170,7 @@ class ControlView extends GetView<ControlController> {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border:  Border.all(
-          color: colorScheme.onSurface.withOpacity(0.1),
-        ),
+        border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10.0),

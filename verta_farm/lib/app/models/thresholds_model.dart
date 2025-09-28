@@ -12,6 +12,8 @@ class ThresholdsModel {
   final double? phMax;
   final double? ecMin;
   final double? ecMax;
+  final double? tdsMin;
+  final double? tdsMax;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -29,6 +31,8 @@ class ThresholdsModel {
     this.phMax,
     this.ecMin,
     this.ecMax,
+    this.tdsMin,
+    this.tdsMax,
     this.createdAt,
     this.updatedAt,
   });
@@ -48,6 +52,8 @@ class ThresholdsModel {
       phMax: json['ph_max']?.toDouble(),
       ecMin: json['ec_min']?.toDouble(),
       ecMax: json['ec_max']?.toDouble(),
+      tdsMin: json['tds_min']?.toDouble(),
+      tdsMax: json['tds_max']?.toDouble(),
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
@@ -72,6 +78,8 @@ class ThresholdsModel {
       'ph_max': phMax,
       'ec_min': ecMin,
       'ec_max': ecMax,
+      'tds_min': tdsMin,
+      'tds_max': tdsMax,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -93,6 +101,8 @@ class ThresholdsModel {
       phMax: 7.5,
       ecMin: 0.8,
       ecMax: 2.0,
+      tdsMin: 300.0,
+      tdsMax: 800.0,
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../../../services/websocket_service.dart';
 import '../../../services/thresholds_service.dart';
 import '../../../services/control_service.dart';
@@ -17,6 +19,7 @@ class DashboardController extends GetxController {
   var totalLiters = 0.0.obs;
   var avgLitersPerMin = 0.0.obs;
   var pulses = 0.obs;
+  var tdsLevel = 0.0.obs;
 
   // System status
   var pumpStatus = true.obs; // true = ON, false = OFF
@@ -49,6 +52,11 @@ class DashboardController extends GetxController {
   // Control service
   late ControlService _controlService;
 
+  // Device status
+  var isDeviceOnline = false.obs;
+  var deviceStatus = 'Device Offline'.obs;
+  var lastDeviceActivity = DateTime.now().obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -74,6 +82,12 @@ class DashboardController extends GetxController {
 
     // Start periodic updates (simulate IoT data) - fallback if WebSocket fails
     startDataUpdates();
+
+    // Start device timeout check
+    startDeviceTimeoutCheck();
+
+    // Start initial device status check after a delay
+    _startInitialDeviceCheck();
   }
 
   void _initializeHistoricalData() {
@@ -98,37 +112,41 @@ class DashboardController extends GetxController {
     };
 
     _webSocketService.onError = (error) {
-      Get.snackbar(
-        'WebSocket Error',
-        error,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 3),
+      Fluttertoast.showToast(
+        msg: 'WebSocket Error: $error',
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
       );
     };
 
     _webSocketService.onConnected = () {
-      Get.snackbar(
-        'Connected',
-        'Real-time data connection established',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 2),
+      Fluttertoast.showToast(
+        msg: 'Connected - Real-time data connection established',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
         backgroundColor: Colors.green,
-        colorText: Colors.white,
+        textColor: Colors.white,
       );
 
       // Request current status from ESP32 after connection
-      _requestCurrentStatus();
+      requestCurrentStatus();
     };
 
     _webSocketService.onDisconnected = () {
-      Get.snackbar(
-        'Disconnected',
-        'Real-time data connection lost',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 2),
+      Fluttertoast.showToast(
+        msg: 'Disconnected - Real-time data connection lost',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
         backgroundColor: Colors.red,
-        colorText: Colors.white,
+        textColor: Colors.white,
       );
+
+      // Mark device as offline when WebSocket disconnects
+      isDeviceOnline.value = false;
+      deviceStatus.value = 'Device Offline';
+      print('Device marked offline due to WebSocket disconnect');
     };
   }
 
@@ -151,7 +169,7 @@ class DashboardController extends GetxController {
     _controlService = ControlService.to;
   }
 
-  void _requestCurrentStatus() {
+  void requestCurrentStatus() {
     // Request current status from ESP32 by sending a status request
     // This will trigger ESP32 to publish its current relay state
     print('Requesting current status from ESP32...');
@@ -166,9 +184,48 @@ class DashboardController extends GetxController {
     });
   }
 
+  void _updateDeviceStatus() {
+    lastDeviceActivity.value = DateTime.now();
+    // Only update to online if WebSocket is connected
+    if (!isDeviceOnline.value && _webSocketService.isConnected.value) {
+      isDeviceOnline.value = true;
+      deviceStatus.value = 'Device Online';
+      print('Device came online');
+    }
+  }
+
+  void _checkDeviceTimeout() {
+    final now = DateTime.now();
+    final timeSinceLastActivity = now.difference(lastDeviceActivity.value);
+
+    // Check if WebSocket is disconnected
+    if (!_webSocketService.isConnected.value) {
+      if (isDeviceOnline.value) {
+        isDeviceOnline.value = false;
+        deviceStatus.value = 'Device Offline';
+        print('Device marked offline - WebSocket disconnected');
+      }
+      return;
+    }
+
+    if (timeSinceLastActivity.inSeconds > 30) {
+      // 30 seconds timeout
+      if (isDeviceOnline.value) {
+        isDeviceOnline.value = false;
+        deviceStatus.value = 'Device Offline';
+        print(
+          'Device went offline - no activity for ${timeSinceLastActivity.inSeconds}s',
+        );
+      }
+    }
+  }
+
   void _handleWebSocketData(Map<String, dynamic> data) {
     try {
       print('Processing WebSocket data: $data');
+
+      // Update device activity
+      _updateDeviceStatus();
 
       // Handle status messages (relay and light state)
       if (data.containsKey('type') && data['type'] == 'status') {
@@ -205,6 +262,9 @@ class DashboardController extends GetxController {
       // Data format: {device_id: esp32-001, sensor_id: esp32-001-temperature, type: temperature, ts: 2025-09-26T18:29:56, value_numeric: 50.5, value_text: null}
 
       if (data.containsKey('type') && data.containsKey('value_numeric')) {
+        // Update device activity for sensor data
+        _updateDeviceStatus();
+
         final sensorType = data['type'] as String;
         final value = (data['value_numeric'] as num).toDouble();
 
@@ -246,6 +306,9 @@ class DashboardController extends GetxController {
             if (data.containsKey('pulses')) {
               pulses.value = data['pulses'] as int;
             }
+            break;
+          case 'tds':
+            tdsLevel.value = value;
             break;
           default:
             print('Unknown sensor type: $sensorType');
@@ -397,6 +460,42 @@ class DashboardController extends GetxController {
     });
   }
 
+  void startDeviceTimeoutCheck() {
+    Timer.periodic(Duration(seconds: 10), (timer) {
+      _checkDeviceTimeout();
+    });
+  }
+
+  void _startInitialDeviceCheck() {
+    // Wait 5 seconds for WebSocket to connect, then check device status
+    Future.delayed(Duration(seconds: 5), () {
+      if (!_webSocketService.isConnected.value) {
+        // WebSocket not connected, mark device as offline
+        isDeviceOnline.value = false;
+        deviceStatus.value = 'Device Offline';
+        print('Initial check: WebSocket not connected, device marked offline');
+      } else {
+        // WebSocket connected, request device status
+        requestCurrentStatus();
+        print('Initial check: WebSocket connected, requesting device status');
+
+        // If no response from device within 10 seconds, mark as offline
+        Future.delayed(Duration(seconds: 10), () {
+          if (!isDeviceOnline.value) {
+            isDeviceOnline.value = false;
+            deviceStatus.value = 'Device Offline';
+            print('Initial check: No device response, marked as offline');
+          }
+        });
+      }
+    });
+  }
+
+  void reconnectWebSocket() {
+    print('Attempting to reconnect WebSocket...');
+    _webSocketService.connect();
+  }
+
   // System control methods
   void togglePump() async {
     final newStatus = !pumpStatus.value;
@@ -441,18 +540,22 @@ class DashboardController extends GetxController {
 
   void scanNow() {
     // Simulate AI scan
-    Get.snackbar(
-      'Scanning...',
-      'AI is analyzing plant health...',
-      duration: Duration(seconds: 2),
+    Fluttertoast.showToast(
+      msg: 'Scanning... AI is analyzing plant health...',
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: Colors.blue,
+      textColor: Colors.white,
     );
 
     Future.delayed(Duration(seconds: 2), () {
       updateHealthStatus();
-      Get.snackbar(
-        'Scan Complete',
-        aiSummary.value,
-        duration: Duration(seconds: 3),
+      Fluttertoast.showToast(
+        msg: 'Scan Complete: ${aiSummary.value}',
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
       );
     });
   }
@@ -487,11 +590,6 @@ class DashboardController extends GetxController {
     }
   }
 
-  // WebSocket control methods
-  void reconnectWebSocket() {
-    _webSocketService.reconnect();
-  }
-
   void disconnectWebSocket() {
     _webSocketService.disconnect();
   }
@@ -520,6 +618,8 @@ class DashboardController extends GetxController {
   double get phMax => _thresholdsService.getPhMax();
   double get ecMin => _thresholdsService.getEcMin();
   double get ecMax => _thresholdsService.getEcMax();
+  double get tdsMin => _thresholdsService.getTdsMin();
+  double get tdsMax => _thresholdsService.getTdsMax();
 
   // Status check methods for sensor cards
   bool get isTemperatureOk =>
@@ -529,6 +629,7 @@ class DashboardController extends GetxController {
   bool get isWaterOk => _thresholdsService.isWaterOk(waterLevel.value);
   bool get isPhOk => _thresholdsService.isPhOk(phLevel.value);
   bool get isEcOk => _thresholdsService.isEcOk(ecLevel.value);
+  bool get isTdsOk => _thresholdsService.isTdsOk(tdsLevel.value);
 
   // Control service status
   bool get isControlling => _controlService.isControlling.value;

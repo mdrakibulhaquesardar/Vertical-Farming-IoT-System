@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class ControlService extends GetxService {
   static ControlService get to => Get.find();
@@ -42,13 +43,12 @@ class ControlService extends GetxService {
         final data = json.decode(response.body);
         print('Control API response: $data');
 
-        Get.snackbar(
-          'Success',
-          '$target turned ${desiredState.toUpperCase()}',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: Duration(seconds: 2),
+        Fluttertoast.showToast(
+          msg: '$target turned ${desiredState.toUpperCase()}',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.green,
-          colorText: Colors.white,
+          textColor: Colors.white,
         );
 
         return true;
@@ -57,13 +57,12 @@ class ControlService extends GetxService {
           'Failed to control device: ${response.statusCode} - ${response.body}',
         );
 
-        Get.snackbar(
-          'Error',
-          'Failed to control $target: ${response.statusCode}',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: Duration(seconds: 3),
+        Fluttertoast.showToast(
+          msg: 'Failed to control $target: ${response.statusCode}',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.red,
-          colorText: Colors.white,
+          textColor: Colors.white,
         );
 
         return false;
@@ -71,13 +70,12 @@ class ControlService extends GetxService {
     } catch (e) {
       print('Error controlling device: $e');
 
-      Get.snackbar(
-        'Error',
-        'Failed to control $target: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 3),
+      Fluttertoast.showToast(
+        msg: 'Failed to control $target: $e',
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
         backgroundColor: Colors.red,
-        colorText: Colors.white,
+        textColor: Colors.white,
       );
 
       return false;

@@ -116,6 +116,11 @@ class ThresholdsService extends GetxService {
               thresholdsMap['ec_min'] = minValue.toDouble();
               thresholdsMap['ec_max'] = maxValue.toDouble();
               break;
+            case 'tds':
+            case 'tds_level':
+              thresholdsMap['tds_min'] = minValue.toDouble();
+              thresholdsMap['tds_max'] = maxValue.toDouble();
+              break;
           }
         }
       }
@@ -138,6 +143,8 @@ class ThresholdsService extends GetxService {
   double getPhMax() => currentThresholds.value.phMax ?? 7.5;
   double getEcMin() => currentThresholds.value.ecMin ?? 0.8;
   double getEcMax() => currentThresholds.value.ecMax ?? 2.0;
+  double getTdsMin() => currentThresholds.value.tdsMin ?? 300.0;
+  double getTdsMax() => currentThresholds.value.tdsMax ?? 800.0;
 
   // Check if a value is within threshold
   bool isTemperatureOk(double value) {
@@ -162,5 +169,9 @@ class ThresholdsService extends GetxService {
 
   bool isEcOk(double value) {
     return value >= getEcMin() && value <= getEcMax();
+  }
+
+  bool isTdsOk(double value) {
+    return value >= getTdsMin() && value <= getTdsMax();
   }
 }
