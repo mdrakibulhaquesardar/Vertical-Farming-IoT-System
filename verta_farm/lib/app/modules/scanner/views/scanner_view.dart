@@ -136,8 +136,8 @@ class _ScannerViewState extends State<ScannerView>
                             } else {
                               return ClipRRect(
                                 borderRadius: BorderRadius.circular(24),
-                                child: Image.network(
-                                  'https://images.squarespace-cdn.com/content/v1/57d2a26b20099eb50e305b38/1543953057869-4XCR18WA5YQ3OPQ0LJ55/kava-kava-illustration.jpg',
+                                child: Image.asset(
+                                  'assets/images/plantScanImage.png',
                                   width: 200,
                                   height: 200,
                                   fit: BoxFit.fill,

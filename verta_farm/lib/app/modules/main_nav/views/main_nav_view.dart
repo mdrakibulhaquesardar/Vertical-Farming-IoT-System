@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:persistent_bottom_nav_bar_v2/persistent_bottom_nav_bar_v2.dart';
 import 'package:flutter_vector_icons/flutter_vector_icons.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../dashboard/views/dashboard_view.dart';
 import '../../control/views/control_view.dart';
 import '../../scanner/views/scanner_view.dart';
 import '../../graphs/views/graphs_view.dart';
-import '../../notifications/views/notifications_view.dart';
+import '../../my_plant/views/my_plant_view.dart';
 import '../../../controllers/main_controller.dart';
 
 class MainNavView extends GetView<MainController> {
@@ -41,6 +40,13 @@ class MainNavView extends GetView<MainController> {
           item: ItemConfig(
             icon: const Icon(MaterialCommunityIcons.camera_outline),
             title: "Scanner",
+          ),
+        ),
+        PersistentTabConfig(
+          screen: const MyPlantView(),
+          item: ItemConfig(
+            icon: const Icon(MaterialCommunityIcons.leaf),
+            title: "My Plant",
           ),
         ),
         PersistentTabConfig(
