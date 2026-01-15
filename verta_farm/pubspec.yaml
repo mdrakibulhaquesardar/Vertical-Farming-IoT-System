@@ -45,6 +45,8 @@ dependencies:
   web_socket_client: ^0.2.1
   http: ^1.1.0
   fluttertoast: ^9.0.0
+  tflite_flutter: ^0.12.1
+  image: ^4.2.0
 
 
 dev_dependencies:
@@ -76,6 +78,8 @@ flutter:
   assets:
     - assets\images\hydrp.png
     - assets\images\vertaFram.png
+    - assets\models\plant_disease_model.tflite
+    - assets\models\plant_disease_model_labels.txt
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

@@ -1,15 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../utils/snackbar_utils.dart';
 import '../controllers/scanner_controller.dart';
 
-class ScannerView extends GetView<ScannerController> {
+class ScannerView extends StatefulWidget {
   const ScannerView({Key? key}) : super(key: key);
 
   @override
+  State<ScannerView> createState() => _ScannerViewState();
+}
+
+class _ScannerViewState extends State<ScannerView>
+    with SingleTickerProviderStateMixin {
+  late final ScannerController controller;
+  late final AnimationController _scanController;
+  late final Animation<double> _scanPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.find<ScannerController>();
+    _scanController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    _scanPosition = CurvedAnimation(
+      parent: _scanController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scanController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -117,6 +145,25 @@ class ScannerView extends GetView<ScannerController> {
                               );
                             }
                           }),
+                          // Scanning animation overlay
+                          Positioned.fill(
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: AnimatedBuilder(
+                                  animation: _scanPosition,
+                                  builder: (context, child) {
+                                    return CustomPaint(
+                                      painter: _ScanLinePainter(
+                                        progress: _scanPosition.value,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -134,19 +181,24 @@ class ScannerView extends GetView<ScannerController> {
                           fontWeight: FontWeight.w500,
                         ),
                       );
+                    } else if (controller.isPlantMissing.value) {
+                      return Text(
+                        'Oops! Plant is missing.\nPlease capture a plant image.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.lato(
+                          color: Colors.orange[700],
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
                     } else if (controller.hasResult.value) {
                       Future.delayed(Duration.zero, () {
                         if (ModalRoute.of(context)?.isCurrent ?? true) {
                           showModalBottomSheet(
                             context: context,
                             isScrollControlled: true,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(24),
-                              ),
-                            ),
-                            builder: (context) =>
-                                _buildAnalysisResultsModal(context),
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => _buildAnalysisResultsModal(context),
                           );
                           controller.hasResult.value =
                               false; // Reset to prevent multiple modals
@@ -326,153 +378,554 @@ class ScannerView extends GetView<ScannerController> {
 
   Widget _buildAnalysisResultsModal(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: colorScheme.outline.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
+    final isHealthy = controller.diseaseName.value.toLowerCase().contains('healthy');
+    
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(24),
             ),
           ),
-          Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Drag handle
               Container(
-                padding: const EdgeInsets.all(8),
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.health_and_safety,
-                  color: Colors.green,
-                  size: 20,
+                  color: colorScheme.outline.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                child: SingleChildScrollView(
+                  controller: scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isHealthy 
+                              ? Colors.green.withOpacity(0.15)
+                              : Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          isHealthy ? Icons.health_and_safety : Icons.bug_report,
+                          color: isHealthy ? Colors.green : Colors.orange,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🌿 Plant Analysis Report',
+                              style: GoogleFonts.lato(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'AI-powered health assessment',
+                              style: GoogleFonts.lato(
+                                fontSize: 12,
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Plant Type & Date Card
+                  _buildInfoCard(
+                    context,
+                    [
+                      _buildInfoItem(
+                        Icons.local_florist,
+                        'Plant Type',
+                        controller.plantType.value.isEmpty 
+                            ? 'Unknown' 
+                            : controller.plantType.value,
+                        Colors.blue,
+                      ),
+                      _buildInfoItem(
+                        Icons.calendar_today,
+                        'Analysis Date',
+                        '${controller.analysisDate.value.day}/${controller.analysisDate.value.month}/${controller.analysisDate.value.year}',
+                        Colors.purple,
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Primary Detection Card
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: isHealthy 
+                          ? Colors.green.withOpacity(0.1)
+                          : Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isHealthy 
+                            ? Colors.green.withOpacity(0.3)
+                            : Colors.red.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              isHealthy ? Icons.check_circle : Icons.warning,
+                              color: isHealthy ? Colors.green : Colors.red,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Primary Detection',
+                              style: GoogleFonts.lato(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          controller.diseaseName.value,
+                          style: GoogleFonts.lato(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isHealthy ? Colors.green[700] : Colors.red[700],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Confidence Bar
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Confidence',
+                                        style: GoogleFonts.lato(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: colorScheme.onSurface.withOpacity(0.7),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${(controller.confidence.value * 100).toStringAsFixed(1)}%',
+                                        style: GoogleFonts.lato(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: colorScheme.onSurface,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: controller.confidence.value,
+                                      minHeight: 8,
+                                      backgroundColor: Colors.grey[200],
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        controller.confidence.value >= 0.7
+                                            ? Colors.green
+                                            : controller.confidence.value >= 0.5
+                                                ? Colors.orange
+                                                : Colors.red,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Risk & Severity Metrics
+                  if (!isHealthy) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMetricCard(
+                            context,
+                            'Severity',
+                            controller.severity.value,
+                            _getSeverityColor(controller.severity.value),
+                            Icons.assessment,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildMetricCard(
+                            context,
+                            'Risk Level',
+                            controller.riskLevel.value,
+                            _getRiskColor(controller.riskLevel.value),
+                            Icons.priority_high,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildMetricCard(
+                      context,
+                      'Treatment Urgency',
+                      controller.treatmentUrgency.value,
+                      _getUrgencyColor(controller.treatmentUrgency.value),
+                      Icons.schedule,
+                      fullWidth: true,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Top 3 Predictions
+                  if (controller.topPredictions.isNotEmpty) ...[
                     Text(
-                      '📊 Analysis Results',
-                      style: TextStyle(
-                        fontSize: 18,
+                      'Top Predictions',
+                      style: GoogleFonts.lato(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'AI-powered plant health assessment',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurface.withOpacity(0.7),
+                    const SizedBox(height: 12),
+                    ...controller.topPredictions.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final prediction = entry.value;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: index == 0 
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.grey.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: index == 0 
+                                ? Colors.blue.withOpacity(0.3)
+                                : Colors.grey.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: index == 0 
+                                    ? Colors.blue.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 1}',
+                                  style: GoogleFonts.lato(
+                                    fontWeight: FontWeight.bold,
+                                    color: index == 0 ? Colors.blue : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    prediction['label'],
+                                    style: GoogleFonts.lato(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${(prediction['confidence'] * 100).toStringAsFixed(1)}% confidence',
+                                    style: GoogleFonts.lato(
+                                      fontSize: 12,
+                                      color: colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Detailed Solution
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.orange.withOpacity(0.3),
                       ),
                     ),
-                  ],
-                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.lightbulb_outline,
+                              color: Colors.orange[700],
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Treatment Recommendations',
+                              style: GoogleFonts.lato(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          controller.solution.value,
+                          style: GoogleFonts.lato(
+                            fontSize: 14,
+                            height: 1.6,
+                            color: colorScheme.onSurface.withOpacity(0.9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            controller.clearResults();
+                            Navigator.of(context).pop();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('New Scan'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Close'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[800],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
+                ],
               ),
+            ),
+          ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withOpacity(0.2)),
-            ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInfoCard(BuildContext context, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String label, String value, Color color) {
+    return Expanded(
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.bug_report, color: Colors.green, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Detected Issue:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 Text(
-                  controller.diseaseName.value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[700],
+                  label,
+                  style: GoogleFonts.lato(
+                    fontSize: 11,
+                    color: Colors.grey[600],
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Icon(Icons.lightbulb, color: Colors.orange, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Recommended Solution:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
                 Text(
-                  controller.solution.value,
-                  style: TextStyle(
+                  value,
+                  style: GoogleFonts.lato(
                     fontSize: 14,
-                    color: colorScheme.onSurface.withOpacity(0.8),
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                controller.clearResults();
-                Navigator.of(context).pop();
-              },
-              icon: const Icon(Icons.clear, size: 18),
-              label: const Text('Clear Results'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey[200],
-                foregroundColor: Colors.grey[700],
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+    IconData icon, {
+    bool fullWidth = false,
+  }) {
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.lato(
+                  fontSize: 12,
+                  color: Colors.grey[600],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.lato(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
         ],
       ),
     );
+  }
+
+  Color _getSeverityColor(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.orange;
+      case 'low':
+        return Colors.yellow[700]!;
+      default:
+        return Colors.green;
+    }
+  }
+
+  Color _getRiskColor(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'critical':
+        return Colors.red;
+      case 'high':
+        return Colors.orange;
+      case 'moderate':
+        return Colors.yellow[700]!;
+      default:
+        return Colors.green;
+    }
+  }
+
+  Color _getUrgencyColor(String urgency) {
+    switch (urgency.toLowerCase()) {
+      case 'immediate':
+        return Colors.red;
+      case 'urgent':
+        return Colors.orange;
+      case 'soon':
+        return Colors.yellow[700]!;
+      default:
+        return Colors.green;
+    }
   }
 }
 
@@ -522,4 +975,41 @@ class _ScanFramePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ScanLinePainter extends CustomPainter {
+  _ScanLinePainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lineY = size.height * progress;
+    final linePaint = Paint()
+      ..color = const Color(0xFF4CAF50).withOpacity(0.9)
+      ..strokeWidth = 2.0;
+
+    final glowPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          const Color(0xFF4CAF50).withOpacity(0.0),
+          const Color(0xFF4CAF50).withOpacity(0.35),
+          const Color(0xFF4CAF50).withOpacity(0.0),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ).createShader(Rect.fromLTWH(0, lineY - 18, size.width, 36));
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, lineY - 18, size.width, 36),
+      glowPaint,
+    );
+    canvas.drawLine(Offset(0, lineY), Offset(size.width, lineY), linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanLinePainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
 }

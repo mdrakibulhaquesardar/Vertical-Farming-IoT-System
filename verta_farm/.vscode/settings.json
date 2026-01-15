@@ -1,3 +1,4 @@
 {
-  "dart.flutterSdkPath": ".fvm/versions/3.32.5"
+  "dart.flutterSdkPath": ".fvm/versions/3.32.5",
+  "cmake.sourceDirectory": "E:/Local Education/Work_Stattion/Vertical-Farming-IoT-System/verta_farm/linux"
 }
