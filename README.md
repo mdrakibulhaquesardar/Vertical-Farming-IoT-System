@@ -120,6 +120,8 @@ Alembic is configured under `alembic/`.
 Apply latest migrations:
 ```bash
 alembic upgrade head
+Or in Live Docker Server
+docker exec -it vfarm-app alembic upgrade head
 ```
 
 Create a new migration (after model changes):
