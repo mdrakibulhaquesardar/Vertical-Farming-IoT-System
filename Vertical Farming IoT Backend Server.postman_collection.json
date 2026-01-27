@@ -1,0 +1,212 @@
+{
+	"info": {
+		"_postman_id": "a4bcc2ba-edcc-4cfd-aa07-5887b19bbd4e",
+		"name": "Vertical Farming IoT Backend Server",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "28421426"
+	},
+	"item": [
+		{
+			"name": "Health",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/health",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upsert a device / Register",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"device_id\": \"esp32-003\",\r\n    \"type\": \"esp32\",\r\n    \"location\": \"Rajshahi\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/devices/register",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"devices",
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "List devices",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/devices",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"devices"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Recent Readings",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/data/history/esp32-001-temp?limit=100&before=2025-09-24T12:00:00Z",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"data",
+						"history",
+						"esp32-001-temp"
+					],
+					"query": [
+						{
+							"key": "limit",
+							"value": "100"
+						},
+						{
+							"key": "before",
+							"value": "2025-09-24T12:00:00Z"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add sensor",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"sensor_id\": \"esp32-001-tds\",\r\n    \"type\": \"motor\",\r\n    \"unit\": \"R\",\r\n    \"device_id\": 1\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/devices/esp32-003/sensors",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"devices",
+						"esp32-003",
+						"sensors"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Control API",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"target\": \"relay\",  //target: motor | light | relay\r\n    \"desired_state\": \"on\" //desired_state: on | off\r\n\r\n\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/control/esp32-001",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"control",
+						"esp32-001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Set thresholds",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"sensor_type\": \"temperature\", //humidity , // temperature\r\n    \"min_value\": 50,\r\n    \"max_value\": 80\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/thresholds/esp32-001",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"thresholds",
+						"esp32-001"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "List thresholds",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"target\": \"light\",  //target: motor | light | relay\r\n    \"desired_state\": \"on\" //desired_state: on | off\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/thresholds/esp32-001",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"thresholds",
+						"esp32-001"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
